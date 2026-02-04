@@ -1,0 +1,23 @@
+[
+  {
+    "name": "log_id",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "raw_log_summary",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "bias_analysis",
+    "type": "JSON",
+    "mode": "NULLABLE",
+    "description": "The raw JSON output from Vertex AI containing Anchoring/Apophenia scores"
+  }
+]
