@@ -2,8 +2,16 @@
 __pycache__/
 *.pyc
 .env
+.env.*
 .terraform/
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
 data/raw/*
 venv/
+.venv/
+.DS_Store
+*.log
+.vscode/
+.idea/
+terraform.tfplan

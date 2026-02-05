@@ -1,6 +1,19 @@
-provider "google" {
-    project = var.project_id
-    region  = var.region
+resource "google_project_service" "mimir_apis" {
+  for_each = toset([
+    "artifactregistry.googleapis.com",
+    "run.googleapis.com",
+    "pubsub.googleapis.com",
+    "bigquery.googleapis.com",
+    "aiplatform.googleapis.com", # For Vertex AI (Phase 3)
+    "iam.googleapis.com",
+    "cloudbuild.googleapis.com"
+  ])
+
+  project = var.project_id
+  service = each.key
+
+  # Don't disable the service if we destroy the Terraform (safety net)
+  disable_on_destroy = false
 }
 
 # Python logs pushed to pub/sub
@@ -26,6 +39,8 @@ resource "google_bigquery_table" "investigations" {
 resource "google_artifact_registry_repository" "mimir_repo" {
     location = var.region
     repository_id = "mimir-repo"
+    project       = var.project_id
     format = "DOCKER"
     description = "Artifact Registry for Mimir Docker images"
+    depends_on = [google_project_service.mimir_apis]
 }
