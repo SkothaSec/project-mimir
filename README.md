@@ -52,7 +52,7 @@ In a modern SOC, the structure of alert data often leads to three primary cognit
 2.  **Apophenia Risk:** Random data clusters that mimic patterns (e.g., random high-port connections), tempting analysts to find false correlations.
 3.  **Abductive Reasoning Gaps:** Alerts with missing evidence (like a null Parent Process) that require the analyst to *infer* the cause rather than *deduce* it.
 
-Mimir uses **Google Vertex AI (Gemini Pro)** to act as a "Cognitive Firewall," analyzing incoming alerts for these risks and appending a "Cognitive Verdict" to the investigation record to guide the analyst's approach.
+Mimir uses **Google Vertex AI (Gemini Pro)** to analyze incoming alerts for these risks and appending a "Cognitive Verdict" to the investigation record to guide the analyst's approach.
 
 ### Built With
 
@@ -76,11 +76,11 @@ Follow these steps to deploy the infrastructure and reasoning engine to your Goo
 
 1.  **Clone the repository**
     ```sh
-    git clone [https://github.com/skothasec/project-mimir.git](https://github.com/skothasec/project-mimir.git)
+    git clone https://github.com/skothasec/project-mimir.git
     cd project-mimir
     ```
 
-2.  **Set your Project ID**
+2.  **Set your GCP Project ID**
     ```sh
     export PROJECT_ID="your-gcp-project-id"
     ```
