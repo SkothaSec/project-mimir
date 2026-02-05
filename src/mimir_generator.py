@@ -17,7 +17,7 @@ class MimirAlertGenerator:
     def _base_alert_builder(self, template: Dict[str, Any], offset_seconds: int = 0, **kwargs) -> Dict[str, Any]:
         """Creates a standardized SIEM alert object."""
         alert = template.copy()
-        alert["alert_id"] = str(uuid.uuid4())
+        alert["log_id"] = str(uuid.uuid4())
         event_time = self.base_time + timedelta(seconds=offset_seconds)
         alert["timestamp"] = event_time.isoformat()
         
@@ -113,7 +113,7 @@ class MimirAlertGenerator:
         return alerts
 
     def publish(self, data: List[Dict]):
-        """Publishes the data directly to Pub/Sub using the Python client."""
+        """Publishes alerts to Pub/Sub (one message per alert)."""
         if not self.project_id:
             print("ERROR: GOOGLE_CLOUD_PROJECT env var not set.")
             return
@@ -121,16 +121,17 @@ class MimirAlertGenerator:
         publisher = pubsub_v1.PublisherClient()
         topic_path = publisher.topic_path(self.project_id, self.topic_id)
 
-        # Convert list to JSON string
-        message_json = json.dumps(data)
-        message_bytes = message_json.encode("utf-8")
+        sent = 0
+        for alert in data:
+            message_bytes = json.dumps(alert).encode("utf-8")
+            try:
+                future = publisher.publish(topic_path, message_bytes)
+                future.result()
+                sent += 1
+            except Exception as e:
+                print(f"Failed to publish alert {alert.get('alert_id')}: {e}")
 
-        try:
-            future = publisher.publish(topic_path, message_bytes)
-            print(f"Published message ID: {future.result()}")
-            print(f"Sent {len(data)} alerts to {self.topic_id}")
-        except Exception as e:
-            print(f"Failed to publish: {e}")
+        print(f"Sent {sent}/{len(data)} alerts to {self.topic_id}")
 
 if __name__ == "__main__":
     # ARGUMENT PARSER (The CLI Interface)
