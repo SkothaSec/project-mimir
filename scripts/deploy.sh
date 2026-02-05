@@ -17,13 +17,17 @@ cd "${TERRAFORM_DIR}"
 terraform init
 terraform apply -auto-approve
 
-echo ">>> Building Docker image ${IMAGE_URI}..."
+echo ">>> Checking for Docker changes..."
 cd "${ROOT_DIR}"
-docker build --platform=linux/amd64 -t "${IMAGE_URI}" .
-
-echo ">>> Pushing image..."
-gcloud auth configure-docker "${REGION}-docker.pkg.dev" -q
-docker push "${IMAGE_URI}"
+if git diff --quiet HEAD -- Dockerfile src requirements.txt ; then
+  echo "No Docker-relevant changes detected; skipping build/push."
+else
+  echo "Changes detected; building Docker image ${IMAGE_URI}..."
+  docker build --platform=linux/amd64 -t "${IMAGE_URI}" .
+  echo ">>> Pushing image..."
+  gcloud auth configure-docker "${REGION}-docker.pkg.dev" -q
+  docker push "${IMAGE_URI}"
+fi
 
 echo ">>> Deploying to Cloud Run..."
 gcloud run deploy "${SERVICE_NAME}" \
