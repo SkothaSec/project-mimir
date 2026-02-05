@@ -20,27 +20,25 @@ echo "=================================================="
 echo "   DEPLOYING PROJECT MIMIR TO: ${PROJECT_ID}"
 echo "=================================================="
 
-# INFRASTRUCTURE (Terraform)
-# Ensures APIs are enabled and Pub/Sub/BigQuery exist.
+# 1. INFRASTRUCTURE (Terraform)
 echo ">>> [1/4] Checking Infrastructure..."
 cd "${TERRAFORM_DIR}"
-# We use -auto-approve to make it non-interactive
 terraform init
 terraform apply -auto-approve -var="project_id=${PROJECT_ID}"
 
-# BUILD (Docker)
+# 2. BUILD (Docker)
 # We force --platform linux/amd64 to ensure compatibility with Cloud Run
 echo ">>> [2/4] Building Container Image..."
 cd "${ROOT_DIR}"
-docker build --platform=linux/amd64 -t "${IMAGE_URI}" .
+# --no-cache ensures we don't accidentally use an old layer
+docker build --no-cache --platform=linux/amd64 -t "${IMAGE_URI}" .
 
-# PUSH (Artifact Registry)
+# 3. PUSH (Artifact Registry)
 echo ">>> [3/4] Pushing to Artifact Registry..."
-# Configure docker auth for the specific region
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 docker push "${IMAGE_URI}"
 
-# DEPLOY (Cloud Run)
+# 4. DEPLOY (Cloud Run)
 echo ">>> [4/4] Deploying Service to Cloud Run..."
 gcloud run deploy "${APP_NAME}" \
   --image "${IMAGE_URI}" \

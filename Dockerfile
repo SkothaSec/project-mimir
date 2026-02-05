@@ -1,4 +1,4 @@
-FROM python:3.11.8-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1
 # Create non-root user.
 RUN addgroup --system app && adduser --system --ingroup app app
 
-# Install Python deps (empty files are fine; pip will no-op).
+# Install Python deps.
 COPY requirements.txt .
 RUN if [ -s requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
