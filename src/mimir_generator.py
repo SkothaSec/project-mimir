@@ -1,171 +1,161 @@
 import json
 import uuid
 import random
+import os
+import sys
+import argparse
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
+from google.cloud import pubsub_v1
 
 class MimirAlertGenerator:
-    def __init__(self):
-        # Use timezone-aware UTC for modern cloud compatibility
+    def __init__(self, project_id: str = None, topic_id: str = "mimir-ingest-topic"):
         self.base_time = datetime.now(timezone.utc)
+        self.project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
+        self.topic_id = topic_id
 
     def _base_alert_builder(self, template: Dict[str, Any], offset_seconds: int = 0, **kwargs) -> Dict[str, Any]:
-        """
-        Creates a SIEM-style Alert Object.
-        Unlike raw logs, these have 'severity', 'alert_name', and 'product'.
-        """
+        """Creates a standardized SIEM alert object."""
         alert = template.copy()
         alert["alert_id"] = str(uuid.uuid4())
-        
-        # Calculate timestamp relative to start
         event_time = self.base_time + timedelta(seconds=offset_seconds)
         alert["timestamp"] = event_time.isoformat()
         
-        # Default SIEM fields
+        # Default fields if not provided
         if "severity" not in alert: alert["severity"] = "Low"
         if "product" not in alert: alert["product"] = "Mimir Security Suite"
-        if "status" not in alert: alert["status"] = "New"
-
-        # Apply overrides
+        
         alert.update(kwargs)
         return alert
 
-    # =========================================================================
-    # 1. ANCHORING GENERATOR (The "Alert Fatigue" Trap)
-    # Goal: Overwhelm the analyst with "Low Severity" noise so they close the 
-    # ticket before seeing the "High Severity" signal at the end.
-    # =========================================================================
-    def generate_anchoring_alerts(self, variant: str = "trap") -> List[Dict]:
+    # --- 1. ANCHORING (Alert Fatigue) ---
+    def generate_anchoring(self, variant: str = "trap") -> List[Dict]:
         alerts = []
-        user = "svc_backup_admin"
+        user = "svc_backup"
         src_ip = "10.50.1.100"
 
-        # THE NOISE (The Anchor)
-        # 8 "Low Severity" alerts. The analyst thinks: "Just a misconfigured password script."
+        # NOISE: 8 Low severity alerts (The Anchor)
         for i in range(8):
             alerts.append(self._base_alert_builder({
                 "alert_name": "Authentication Failure",
                 "severity": "Low",
-                "description": f"Failed login attempt for {user} due to bad password.",
+                "description": f"Failed login for {user}. Likely bad script.",
                 "src_ip": src_ip,
                 "user": user,
                 "action": "Block"
-            }, offset_seconds=i*2, test_case="Anchoring_Noise"))
+            }, offset_seconds=i*5, test_case="Anchoring_Noise"))
 
-        # THE SIGNAL (The contradictions)
+        # SIGNAL: The high severity event hidden at the end
         if variant == "trap":
-            # The Trap: The 9th alert is SUCCESSFUL and HIGH severity, 
-            # but looks similar enough to be ignored if skimming.
             alerts.append(self._base_alert_builder({
-                "alert_name": "Privileged Account Login", # DIFFERENT NAME
-                "severity": "High",                       # DIFFERENT SEVERITY
-                "description": f"Successful login for {user}. New session established.",
+                "alert_name": "Privileged Account Login",
+                "severity": "High",
+                "description": f"Successful login for {user}. Session established.",
                 "src_ip": src_ip,
                 "user": user,
                 "action": "Allow"
-            }, offset_seconds=20, test_case="Anchoring_Signal"))
-
+            }, offset_seconds=45, test_case="Anchoring_Signal"))
+            
         return alerts
 
-    # =========================================================================
-    # 2. APOPHENIA GENERATOR (The "False Pattern" Trap)
-    # Goal: Create data that *looks* like a pattern (e.g. C2 Beaconing) 
-    # but is mathematically random (Noise).
-    # =========================================================================
-    def generate_apophenia_alerts(self, variant: str = "trap") -> List[Dict]:
+    # --- 2. APOPHENIA (False Patterns) ---
+    def generate_apophenia(self, variant: str = "trap") -> List[Dict]:
         alerts = []
         victim_ip = "192.168.1.55"
         
         if variant == "trap":
-            # FALSE PATTERN (The Trap)
-            # Random high ports, random intervals. 
-            # Analyst sees "Many connections" -> assumes "Beacon".
-            # Mimir must see "Random Math" -> asserts "Noise".
-            
-            # Random timestamps: 12s, 89s, 145s (No cadence)
+            # TRAP: Random intervals, random ports. NOISE.
+            # Analyst sees "Beaconing", Mimir sees "Randomness".
             offsets = sorted([random.randint(0, 300) for _ in range(5)])
-            
             for t in offsets:
-                # Random ephemeral ports (looks like C2 jitter, but is just noise)
-                rand_port = random.randint(49152, 65535)
                 alerts.append(self._base_alert_builder({
-                    "alert_name": "Outbound Network Connection",
+                    "alert_name": "Outbound Connection",
                     "severity": "Medium",
-                    "description": "Unusual outbound traffic detected to external IP.",
-                    "src_ip": victim_ip,
-                    "dest_ip": "203.0.113.88", # External
-                    "dest_port": rand_port,    # RANDOM PORT
-                    "bytes_out": random.randint(100, 5000) # RANDOM SIZE
-                }, offset_seconds=t, test_case="Apophenia_FalsePattern"))
-
-        elif variant == "truth":
-            # TRUE PATTERN (The Signal)
-            # Fixed 60s interval. Fixed Port. Fixed Byte Size.
-            # This IS a pattern.
-            for i in range(5):
-                alerts.append(self._base_alert_builder({
-                    "alert_name": "Outbound Network Connection",
-                    "severity": "Medium",
-                    "description": "Unusual outbound traffic detected to external IP.",
+                    "description": "Suspicious outbound traffic.",
                     "src_ip": victim_ip,
                     "dest_ip": "203.0.113.88",
-                    "dest_port": 8080, # FIXED PORT
-                    "bytes_out": 256   # FIXED SIZE
-                }, offset_seconds=i*60, test_case="Apophenia_TruePattern")) # FIXED INTERVAL
+                    "dest_port": random.randint(49152, 65535), # Random Port
+                    "bytes_out": random.randint(100, 5000)     # Random Size
+                }, offset_seconds=t, test_case="Apophenia_Trap"))
 
+        elif variant == "truth":
+            # TRUTH: Fixed interval (60s), fixed port. SIGNAL.
+            for i in range(5):
+                alerts.append(self._base_alert_builder({
+                    "alert_name": "Outbound Connection",
+                    "severity": "Medium",
+                    "description": "Suspicious outbound traffic.",
+                    "src_ip": victim_ip,
+                    "dest_ip": "203.0.113.88",
+                    "dest_port": 8080, # Fixed Port
+                    "bytes_out": 256   # Fixed Size
+                }, offset_seconds=i*60, test_case="Apophenia_Truth"))
+                
         return alerts
 
-    # =========================================================================
-    # 3. ABDUCTIVE GENERATOR (The "Missing Evidence" Gap)
-    # Goal: Force the analyst to guess.
-    # Mimir must identify that key fields (Parent Process) are null/missing.
-    # =========================================================================
-    def generate_abductive_alert(self, variant: str = "trap") -> List[Dict]:
+    # --- 3. ABDUCTIVE (Missing Evidence) ---
+    def generate_abductive(self, variant: str = "trap") -> List[Dict]:
         alerts = []
-        
-        # Base malicious-looking command
         cmd = "powershell.exe -nop -w hidden -enc JABzAD0A..."
         
         if variant == "trap":
-            # THE TRAP: High Severity Alert, but MISSING CONTEXT.
-            # We explicitly set parent_process to None or omit it.
-            # Analyst Bias: "It's PowerShell, so it's malware."
-            # Mimir Logic: "I cannot prove it's malware without the Parent."
+            # TRAP: Missing Parent Process.
             alerts.append(self._base_alert_builder({
-                "alert_name": "Suspicious PowerShell Execution",
+                "alert_name": "Suspicious PowerShell",
                 "severity": "High",
-                "description": "Encoded PowerShell command execution detected.",
+                "description": "Encoded PowerShell detected.",
                 "user": "SYSTEM",
                 "file_name": "powershell.exe",
                 "command_line": cmd,
-                "parent_process": None, # <--- THE MISSING EVIDENCE
-                "parent_hash": None     # <--- THE MISSING EVIDENCE
-            }, offset_seconds=5, test_case="Abductive_MissingEvidence"))
-
-        elif variant == "truth":
-            # THE TRUTH: Context provided.
-            alerts.append(self._base_alert_builder({
-                "alert_name": "Suspicious PowerShell Execution",
-                "severity": "High",
-                "description": "Encoded PowerShell command execution detected.",
-                "user": "SYSTEM",
-                "file_name": "powershell.exe",
-                "command_line": cmd,
-                "parent_process": "winword.exe", # <--- EVIDENCE PRESENT (Malicious)
-                "parent_hash": "a1b2c3d4..."
-            }, offset_seconds=5, test_case="Abductive_EvidencePresent"))
-
+                "parent_process": None, # <--- MISSING EVIDENCE
+            }, offset_seconds=5, test_case="Abductive_Trap"))
+            
         return alerts
 
-# Helper to run locally
-if __name__ == "__main__":
-    gen = MimirAlertGenerator()
-    
-    print("--- ANCHORING BATCH ---")
-    print(json.dumps(gen.generate_anchoring_alerts("trap"), indent=2))
-    
-    print("\n--- APOPHENIA BATCH ---")
-    print(json.dumps(gen.generate_apophenia_alerts("trap"), indent=2))
+    def publish(self, data: List[Dict]):
+        """Publishes the data directly to Pub/Sub using the Python client."""
+        if not self.project_id:
+            print("ERROR: GOOGLE_CLOUD_PROJECT env var not set.")
+            return
 
-    print("\n--- ABDUCTIVE SINGLE ---")
-    print(json.dumps(gen.generate_abductive_alert("trap"), indent=2))
+        publisher = pubsub_v1.PublisherClient()
+        topic_path = publisher.topic_path(self.project_id, self.topic_id)
+
+        # Convert list to JSON string
+        message_json = json.dumps(data)
+        message_bytes = message_json.encode("utf-8")
+
+        try:
+            future = publisher.publish(topic_path, message_bytes)
+            print(f"Published message ID: {future.result()}")
+            print(f"Sent {len(data)} alerts to {self.topic_id}")
+        except Exception as e:
+            print(f"Failed to publish: {e}")
+
+if __name__ == "__main__":
+    # ARGUMENT PARSER (The CLI Interface)
+    parser = argparse.ArgumentParser(description="Generate and Send Mimir Test Data")
+    parser.add_argument("type", choices=["anchoring", "apophenia", "abduction"], help="What to test")
+    parser.add_argument("--variant", choices=["trap", "truth"], default="trap", help="Scenario variant")
+    parser.add_argument("--send", action="store_true", help="Send directly to Pub/Sub")
+    parser.add_argument("--project", help="GCP Project ID")
+    
+    args = parser.parse_args()
+
+    # Initialize
+    gen = MimirAlertGenerator(project_id=args.project)
+    
+    # Generate Data
+    data = []
+    if args.type == "anchoring":
+        data = gen.generate_anchoring(args.variant)
+    elif args.type == "apophenia":
+        data = gen.generate_apophenia(args.variant)
+    elif args.type == "abduction":
+        data = gen.generate_abductive(args.variant)
+
+    # Output
+    if args.send:
+        gen.publish(data)
+    else:
+        print(json.dumps(data, indent=2))
