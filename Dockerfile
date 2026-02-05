@@ -14,7 +14,6 @@ RUN if [ -s requirements.txt ]; then pip install --no-cache-dir -r requirements.
 
 # Application source.
 COPY src ./src
-COPY data ./data
 
 # Use exec-form so the Python process receives OS signals directly.
 USER app
