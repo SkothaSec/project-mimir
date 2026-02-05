@@ -2,111 +2,170 @@ import json
 import uuid
 import random
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List
 
-class MimirMatrix:
+class MimirAlertGenerator:
     def __init__(self):
-        """Capture start time so all logs are relative to this."""
-        self.base_time = datetime.now(timezone.utc)    
-    def _base_log_builder(self, template: Dict[str, Any], offset_seconds: int = 0, **kwargs) -> Dict[str, Any]:
-        """
-        Creates a single stadardized log entry based on a template and additional parameters.
-        Args:
-            template: A dictionary containing default values for the log type.
-            offset_seconds: How many seconds after the simulations starts this event occurs
-            **kwargs: overrides to change specific fields in the log entry.
-        """
-        event = template.copy() # Create copy so original template is not modified
-        event["log_id"] = str(uuid.uuid4()) # Unique identifier for the log entry
-        event_time = self.base_time + timedelta(seconds=offset_seconds) # Calculate event time
-        event["timestamp"] = event_time.isoformat() + "Z" # ISO 8601 format with Zulu timezone
-        event.update(kwargs) # Override with any additional parameters
-        return event
+        # Use timezone-aware UTC for modern cloud compatibility
+        self.base_time = datetime.now(timezone.utc)
 
-    # Place holder for additional methods to generate specific log types
-    def generate_anchoring(self):
-        pass
-    
-    def generate_apophenia(self, variant: str = "trap") -> list:
+    def _base_alert_builder(self, template: Dict[str, Any], offset_seconds: int = 0, **kwargs) -> Dict[str, Any]:
         """
-        Generates logs for an apophenia trap, truth, and uncertain scenario.
-        The end result will be coincicence (Noise) and a true positive (Signal).
-        :param variant: The type of apophenia scenario to generate. Options are "trap", "truth", and "uncertain".
-        :type variant: str
-        :param self: Description
-        :return: Description
-        :rtype: list
+        Creates a SIEM-style Alert Object.
+        Unlike raw logs, these have 'severity', 'alert_name', and 'product'.
         """
-        # Need a consistent dst_port and an external dst_ip for all events in the scenario
-        sequence = []
+        alert = template.copy()
+        alert["alert_id"] = str(uuid.uuid4())
+        
+        # Calculate timestamp relative to start
+        event_time = self.base_time + timedelta(seconds=offset_seconds)
+        alert["timestamp"] = event_time.isoformat()
+        
+        # Default SIEM fields
+        if "severity" not in alert: alert["severity"] = "Low"
+        if "product" not in alert: alert["product"] = "Mimir Security Suite"
+        if "status" not in alert: alert["status"] = "New"
 
+        # Apply overrides
+        alert.update(kwargs)
+        return alert
+
+    # =========================================================================
+    # 1. ANCHORING GENERATOR (The "Alert Fatigue" Trap)
+    # Goal: Overwhelm the analyst with "Low Severity" noise so they close the 
+    # ticket before seeing the "High Severity" signal at the end.
+    # =========================================================================
+    def generate_anchoring_alerts(self, variant: str = "trap") -> List[Dict]:
+        alerts = []
+        user = "svc_backup_admin"
+        src_ip = "10.50.1.100"
+
+        # THE NOISE (The Anchor)
+        # 8 "Low Severity" alerts. The analyst thinks: "Just a misconfigured password script."
+        for i in range(8):
+            alerts.append(self._base_alert_builder({
+                "alert_name": "Authentication Failure",
+                "severity": "Low",
+                "description": f"Failed login attempt for {user} due to bad password.",
+                "src_ip": src_ip,
+                "user": user,
+                "action": "Block"
+            }, offset_seconds=i*2, test_case="Anchoring_Noise"))
+
+        # THE SIGNAL (The contradictions)
         if variant == "trap":
-            # NOICE: Messy CDN domains, ranom length and chars.
-            # Not a tunnel, just messy traffic
-            for i in range(5):
-                rand_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=random.randint(5,15)))
-                domain = f"content-{rand_str}.akamai.net"
-                sequence.append(self._base_log_builder({
-                    "event_type": "dns_query",
-                    "query": domain,
-                    "query_type": "A",
-                    "proc": "chrome.exe",
-                }, offset_seconds=i*10, test_case = "T1071_Apophenia"))
+            # The Trap: The 9th alert is SUCCESSFUL and HIGH severity, 
+            # but looks similar enough to be ignored if skimming.
+            alerts.append(self._base_alert_builder({
+                "alert_name": "Privileged Account Login", # DIFFERENT NAME
+                "severity": "High",                       # DIFFERENT SEVERITY
+                "description": f"Successful login for {user}. New session established.",
+                "src_ip": src_ip,
+                "user": user,
+                "action": "Allow"
+            }, offset_seconds=20, test_case="Anchoring_Signal"))
+
+        return alerts
+
+    # =========================================================================
+    # 2. APOPHENIA GENERATOR (The "False Pattern" Trap)
+    # Goal: Create data that *looks* like a pattern (e.g. C2 Beaconing) 
+    # but is mathematically random (Noise).
+    # =========================================================================
+    def generate_apophenia_alerts(self, variant: str = "trap") -> List[Dict]:
+        alerts = []
+        victim_ip = "192.168.1.55"
+        
+        if variant == "trap":
+            # FALSE PATTERN (The Trap)
+            # Random high ports, random intervals. 
+            # Analyst sees "Many connections" -> assumes "Beacon".
+            # Mimir must see "Random Math" -> asserts "Noise".
+            
+            # Random timestamps: 12s, 89s, 145s (No cadence)
+            offsets = sorted([random.randint(0, 300) for _ in range(5)])
+            
+            for t in offsets:
+                # Random ephemeral ports (looks like C2 jitter, but is just noise)
+                rand_port = random.randint(49152, 65535)
+                alerts.append(self._base_alert_builder({
+                    "alert_name": "Outbound Network Connection",
+                    "severity": "Medium",
+                    "description": "Unusual outbound traffic detected to external IP.",
+                    "src_ip": victim_ip,
+                    "dest_ip": "203.0.113.88", # External
+                    "dest_port": rand_port,    # RANDOM PORT
+                    "bytes_out": random.randint(100, 5000) # RANDOM SIZE
+                }, offset_seconds=t, test_case="Apophenia_FalsePattern"))
+
         elif variant == "truth":
-            # SIGNAL: Sequential exfiltration to a known C2 domain
-            # The data is random, but the STRUCTURE is ordered (chunk1, chunk2...)
-            # Or the size is suspiciously uniform.
-            exfil_id = "a1b2"
+            # TRUE PATTERN (The Signal)
+            # Fixed 60s interval. Fixed Port. Fixed Byte Size.
+            # This IS a pattern.
             for i in range(5):
-                # simulated base64 data chunk
-                chunk = f"data_chunk_{i}_of_5_payload_{exfil_id}"
-                domain = f"{chunk}.bad-c2.io"
-                sequence.append(self._base_log_builder({
-                    "event_type": "dns_query",
-                    "query": domain,
-                    "query_type": "TXT", # common for tunneling
-                    "proc": "powershell.exe", # sus process for DNS tunneling
-                }, offset_seconds=i*10 + 60, test_case = "T1071_Apophenia"))
-        elif variant == "uncertain":
-            # MIXED: Random DNS queries with some suspicious patterns
-            for i in range(10):
-                if i % 3 == 0:
-                    # Suspicious chunked data
-                    chunk = f"data_chunk_{i//3}_of_4_payload_xyz"
-                    domain = f"{chunk}.suspicious-domain.com"
-                    sequence.append(self._base_log_builder({
-                        "event_type": "dns_query",
-                        "query": domain,
-                        "query_type": "TXT",
-                        "proc": "cmd.exe",
-                    }, offset_seconds=i*10 + 120, test_case = "T1071_Apophenia"))
-                else:
-                    # Random noise
-                    rand_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=random.randint(5,15)))
-                    domain = f"random-{rand_str}.example.com"
-                    sequence.append(self._base_log_builder({
-                        "event_type": "dns_query",
-                        "query": domain,
-                        "query_type": "A",
-                    "proc": "firefox.exe",
-                }, offset_seconds=i*10 + 120, test_case = "T1071_Apophenia"))
-        return sequence
+                alerts.append(self._base_alert_builder({
+                    "alert_name": "Outbound Network Connection",
+                    "severity": "Medium",
+                    "description": "Unusual outbound traffic detected to external IP.",
+                    "src_ip": victim_ip,
+                    "dest_ip": "203.0.113.88",
+                    "dest_port": 8080, # FIXED PORT
+                    "bytes_out": 256   # FIXED SIZE
+                }, offset_seconds=i*60, test_case="Apophenia_TruePattern")) # FIXED INTERVAL
 
-    def generate_abduction(self):
-        pass
+        return alerts
 
+    # =========================================================================
+    # 3. ABDUCTIVE GENERATOR (The "Missing Evidence" Gap)
+    # Goal: Force the analyst to guess.
+    # Mimir must identify that key fields (Parent Process) are null/missing.
+    # =========================================================================
+    def generate_abductive_alert(self, variant: str = "trap") -> List[Dict]:
+        alerts = []
+        
+        # Base malicious-looking command
+        cmd = "powershell.exe -nop -w hidden -enc JABzAD0A..."
+        
+        if variant == "trap":
+            # THE TRAP: High Severity Alert, but MISSING CONTEXT.
+            # We explicitly set parent_process to None or omit it.
+            # Analyst Bias: "It's PowerShell, so it's malware."
+            # Mimir Logic: "I cannot prove it's malware without the Parent."
+            alerts.append(self._base_alert_builder({
+                "alert_name": "Suspicious PowerShell Execution",
+                "severity": "High",
+                "description": "Encoded PowerShell command execution detected.",
+                "user": "SYSTEM",
+                "file_name": "powershell.exe",
+                "command_line": cmd,
+                "parent_process": None, # <--- THE MISSING EVIDENCE
+                "parent_hash": None     # <--- THE MISSING EVIDENCE
+            }, offset_seconds=5, test_case="Abductive_MissingEvidence"))
+
+        elif variant == "truth":
+            # THE TRUTH: Context provided.
+            alerts.append(self._base_alert_builder({
+                "alert_name": "Suspicious PowerShell Execution",
+                "severity": "High",
+                "description": "Encoded PowerShell command execution detected.",
+                "user": "SYSTEM",
+                "file_name": "powershell.exe",
+                "command_line": cmd,
+                "parent_process": "winword.exe", # <--- EVIDENCE PRESENT (Malicious)
+                "parent_hash": "a1b2c3d4..."
+            }, offset_seconds=5, test_case="Abductive_EvidencePresent"))
+
+        return alerts
+
+# Helper to run locally
 if __name__ == "__main__":
-    generator = MimirMatrix()
+    gen = MimirAlertGenerator()
+    
+    print("--- ANCHORING BATCH ---")
+    print(json.dumps(gen.generate_anchoring_alerts("trap"), indent=2))
+    
+    print("\n--- APOPHENIA BATCH ---")
+    print(json.dumps(gen.generate_apophenia_alerts("trap"), indent=2))
 
-    # Dummy template for testing
-    ssh_template = {
-        "event_type": "ssh_login",
-        "user": "unknown",
-        "src_ip": "192.168.1.100",
-        "dst_ip": "192.168.1.1",
-        "status": "FAILURE"
-    }
-
-    #test_log = generator._base_log_builder(ssh_template, offset_seconds=5, user="admin", status="SUCCESS")
-    apophenia_logs = generator.generate_apophenia(variant="trap")
-    print(json.dumps(apophenia_logs, indent=4))
+    print("\n--- ABDUCTIVE SINGLE ---")
+    print(json.dumps(gen.generate_abductive_alert("trap"), indent=2))
