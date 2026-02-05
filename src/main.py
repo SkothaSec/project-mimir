@@ -18,7 +18,7 @@ TABLE_ID = os.environ.get("BQ_TABLE_ID")
 # Initialize Clients
 bq_client = bigquery.Client()
 vertexai.init(project=PROJECT_ID, location=LOCATION)
-model = GenerativeModel("gemini-1.5-pro-001")
+model = GenerativeModel("gemini-2.5-pro")
 
 # --- PROMPT LOADER ---
 def load_system_prompt():
