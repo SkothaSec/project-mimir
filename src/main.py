@@ -18,7 +18,7 @@ TABLE_ID = os.environ.get("BQ_TABLE_ID")
 # Initialize Clients
 bq_client = bigquery.Client()
 vertexai.init(project=PROJECT_ID, location=LOCATION)
-model = GenerativeModel("gemini-1.5-pro-001")
+model = GenerativeModel("gemini-2.5-pro")
 
 # --- PROMPT LOADER ---
 def load_system_prompt():
@@ -32,6 +32,16 @@ def load_system_prompt():
         return "You are a security analyst."
 
 SYSTEM_INSTRUCTION = load_system_prompt()
+
+REDACT_KEYS = {"test_case", "variant", "ground_truth", "label", "is_truth"}
+
+def _redact_bias_hints(obj):
+    """Remove keys that leak the intended scenario so Vertex must infer the bias."""
+    if isinstance(obj, dict):
+        return {k: _redact_bias_hints(v) for k, v in obj.items() if k not in REDACT_KEYS}
+    if isinstance(obj, list):
+        return [_redact_bias_hints(i) for i in obj]
+    return obj
 
 @app.route("/", methods=["POST"])
 def index():
@@ -47,11 +57,15 @@ def index():
         if isinstance(input_data, list):
             # Batch (Anchoring/Apophenia)
             log_id = f"batch_{input_data[0].get('alert_id', 'unknown')}"
-            analysis_target = json.dumps(input_data, indent=2)
+            test_case = input_data[0].get("test_case")
+            redacted = _redact_bias_hints(input_data)
+            analysis_target = json.dumps(redacted, indent=2)
         else:
             # Single (Abductive)
             log_id = input_data.get('alert_id', 'unknown')
-            analysis_target = json.dumps(input_data, indent=2)
+            test_case = input_data.get("test_case")
+            redacted = _redact_bias_hints(input_data)
+            analysis_target = json.dumps(redacted, indent=2)
     except:
         return "Invalid JSON", 400
 
@@ -74,7 +88,9 @@ def index():
     # Insert into BigQuery
     rows = [{
         "log_id": log_id,
+        "alert_group_id": input_data[0].get('alert_group_id') if isinstance(input_data, list) else input_data.get('alert_group_id'),
         "timestamp": input_data[0].get('timestamp') if isinstance(input_data, list) else input_data.get('timestamp'),
+        "test_case": test_case,
         "raw_log_summary": analysis_target,
         "bias_analysis": ai_analysis
     }]

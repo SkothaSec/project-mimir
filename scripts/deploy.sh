@@ -4,14 +4,15 @@
 set -euo pipefail
 
 # --- CONFIGURATION ---
-# Get Project ID from gcloud config if not set
 PROJECT_ID=$(gcloud config get-value project)
 REGION="us-central1"
 APP_NAME="mimir-processor"
 REPO_NAME="mimir-repo"
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/processor:latest"
+TOPIC_NAME="mimir-ingest-topic"
+SUB_NAME="mimir-ingest-sub"
 
-# Directory setup (Find the root of the repo relative to this script)
+# Directory setup
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${SCRIPT_DIR}/.."
 TERRAFORM_DIR="${ROOT_DIR}/infrastructure"
@@ -21,25 +22,23 @@ echo "   DEPLOYING PROJECT MIMIR TO: ${PROJECT_ID}"
 echo "=================================================="
 
 # 1. INFRASTRUCTURE (Terraform)
-echo ">>> [1/4] Checking Infrastructure..."
+echo ">>> [1/5] Checking Infrastructure..."
 cd "${TERRAFORM_DIR}"
 terraform init
 terraform apply -auto-approve -var="project_id=${PROJECT_ID}"
 
 # 2. BUILD (Docker)
-# We force --platform linux/amd64 to ensure compatibility with Cloud Run
-echo ">>> [2/4] Building Container Image..."
+echo ">>> [2/5] Building Container Image..."
 cd "${ROOT_DIR}"
-# --no-cache ensures we don't accidentally use an old layer
 docker build --no-cache --platform=linux/amd64 -t "${IMAGE_URI}" .
 
 # 3. PUSH (Artifact Registry)
-echo ">>> [3/4] Pushing to Artifact Registry..."
+echo ">>> [3/5] Pushing to Artifact Registry..."
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 docker push "${IMAGE_URI}"
 
 # 4. DEPLOY (Cloud Run)
-echo ">>> [4/4] Deploying Service to Cloud Run..."
+echo ">>> [4/5] Deploying Service to Cloud Run..."
 gcloud run deploy "${APP_NAME}" \
   --image "${IMAGE_URI}" \
   --region "${REGION}" \
@@ -47,6 +46,26 @@ gcloud run deploy "${APP_NAME}" \
   --set-env-vars "BQ_TABLE_ID=${PROJECT_ID}.mimir_security_lake.investigations_results" \
   --allow-unauthenticated
 
+# 5. WIRING (Pub/Sub -> Cloud Run)
+echo ">>> [5/5] Wiring Pub/Sub Subscription..."
+# Get the URL of the just-deployed service
+SERVICE_URL=$(gcloud run services describe "${APP_NAME}" --region "${REGION}" --format 'value(status.url)')
+
+# Create or Update the Push Subscription
+if ! gcloud pubsub subscriptions describe "${SUB_NAME}" --project "${PROJECT_ID}" &>/dev/null; then
+  echo "Creating new subscription pointing to ${SERVICE_URL}..."
+  gcloud pubsub subscriptions create "${SUB_NAME}" \
+    --topic "${TOPIC_NAME}" \
+    --push-endpoint "${SERVICE_URL}" \
+    --ack-deadline 600 \
+    --project "${PROJECT_ID}"
+else
+  echo "Updating existing subscription to ${SERVICE_URL}..."
+  gcloud pubsub subscriptions update "${SUB_NAME}" \
+    --push-endpoint "${SERVICE_URL}" \
+    --project "${PROJECT_ID}"
+fi
+
 echo "=================================================="
-echo "   DEPLOYMENT COMPLETE"
+echo "   DEPLOYMENT & WIRING COMPLETE"
 echo "=================================================="
