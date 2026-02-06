@@ -19,16 +19,23 @@ body {
 .wrap { max-width: 1100px; margin: 40px auto; padding: 0 20px; }
 h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -0.5px; }
 .subtitle { margin: 0 0 20px; color: var(--muted); }
-.table-card { background: var(--card); border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.06); }
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: 12px 14px; text-align: left; vertical-align: top; }
-th { background: rgba(255,255,255,0.04); font-weight: 600; color: var(--muted); }
-tr + tr td { border-top: 1px solid rgba(255,255,255,0.06); }
-.chip { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: rgba(255,255,255,0.08); color: var(--text); }
-.chip.good { background: rgba(94,240,193,0.16); color: var(--accent); }
-.chip.warn { background: rgba(247,201,72,0.18); color: var(--warn); }
-.chip.danger { background: rgba(245,101,101,0.18); color: var(--danger); }
 .muted { color: var(--muted); font-size: 13px; }
 .error { color: var(--danger); }
 .mono { font-family: "SFMono-Regular", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
-@media (max-width: 768px) { th:nth-child(4), td:nth-child(4) { display: none; } }
+.table-card { background: var(--card); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); padding: 8px; }
+pre { margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; color: var(--muted); }
+.centered { display: flex; align-items: center; justify-content: center; min-height: 120px; }
+.pill-btn {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+.pill-btn:hover { background: rgba(255,255,255,0.14); }
+.dialog-content { max-height: 70vh; overflow: auto; }
+.dialog-grid { display: grid; gap: 8px; margin-top: 10px; }
+.mono-block { background: rgba(255,255,255,0.04); padding: 8px; border-radius: 8px; font-family: "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; color: var(--muted); }

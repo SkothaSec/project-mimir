@@ -27,9 +27,20 @@ cd "${TERRAFORM_DIR}"
 terraform init
 terraform apply -auto-approve -var="project_id=${PROJECT_ID}"
 
-# 2. BUILD (Docker) - skip if no relevant changes
-echo ">>> [2/5] Building Container Image..."
+# 2. FRONTEND BUILD (only if frontend changed)
+echo ">>> [2/6] Building frontend (Vite/PrimeReact) if changed..."
 cd "${ROOT_DIR}"
+if git diff --quiet HEAD -- client ; then
+  echo "No frontend changes detected; skipping npm build."
+else
+  cd client
+  npm install
+  npm run build
+  cd "${ROOT_DIR}"
+fi
+
+# 3. BUILD (Docker) - skip if no relevant changes
+echo ">>> [3/6] Building Container Image..."
 if git diff --quiet HEAD -- Dockerfile src requirements.txt client ; then
   echo "No Docker-relevant changes detected; skipping build/push."
   SKIP_PUSH=true
@@ -38,17 +49,17 @@ else
   SKIP_PUSH=false
 fi
 
-# 3. PUSH (Artifact Registry)
+# 4. PUSH (Artifact Registry)
 if [ "${SKIP_PUSH}" = false ]; then
-  echo ">>> [3/5] Pushing to Artifact Registry..."
+  echo ">>> [4/6] Pushing to Artifact Registry..."
   gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
   docker push "${IMAGE_URI}"
 else
-  echo ">>> [3/5] Skipping push (image unchanged)."
+  echo ">>> [4/6] Skipping push (image unchanged)."
 fi
 
-# 4. DEPLOY (Cloud Run)
-echo ">>> [4/5] Deploying Service to Cloud Run..."
+# 5. DEPLOY (Cloud Run)
+echo ">>> [5/6] Deploying Service to Cloud Run..."
 gcloud run deploy "${APP_NAME}" \
   --image "${IMAGE_URI}" \
   --region "${REGION}" \
@@ -56,8 +67,8 @@ gcloud run deploy "${APP_NAME}" \
   --set-env-vars "BQ_TABLE_ID=${PROJECT_ID}.mimir_security_lake.investigations_results" \
   --allow-unauthenticated
 
-# 5. WIRING (Pub/Sub -> Cloud Run)
-echo ">>> [5/5] Wiring Pub/Sub Subscription..."
+# 6. WIRING (Pub/Sub -> Cloud Run)
+echo ">>> [6/6] Wiring Pub/Sub Subscription..."
 # Get the URL of the just-deployed service
 SERVICE_URL=$(gcloud run services describe "${APP_NAME}" --region "${REGION}" --format 'value(status.url)')
 

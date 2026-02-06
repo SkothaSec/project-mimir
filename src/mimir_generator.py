@@ -38,8 +38,8 @@ class MimirAlertGenerator:
         user = "svc_backup"
         src_ip = "10.50.1.100"
 
-        # NOISE: 8 Low severity alerts (The Anchor)
-        for i in range(8):
+        # NOISE: 12 Low severity alerts (The Anchor)
+        for i in range(12):
             alerts.append(self._base_alert_builder({
                 "alert_name": "Authentication Failure",
                 "severity": "Low",
@@ -58,7 +58,7 @@ class MimirAlertGenerator:
                 "src_ip": src_ip,
                 "user": user,
                 "action": "Allow"
-            }, offset_seconds=45, group_id=group_id, test_case="Anchoring_Signal"))
+            }, offset_seconds=70, group_id=group_id, test_case="Anchoring_Signal"))
             
         return alerts
 
@@ -71,21 +71,21 @@ class MimirAlertGenerator:
         if variant == "trap":
             # TRAP: Random intervals, random ports. NOISE.
             # Analyst sees "Beaconing", Mimir sees "Randomness".
-            offsets = sorted([random.randint(0, 300) for _ in range(5)])
+            offsets = sorted([random.randint(0, 420) for _ in range(10)])
             for t in offsets:
                 alerts.append(self._base_alert_builder({
-                    "alert_name": "Outbound Connection",
-                    "severity": "Medium",
-                    "description": "Suspicious outbound traffic.",
+                    "alert_name": random.choice(["Outbound Connection","DNS Query","HTTPS Request"]),
+                    "severity": random.choice(["Low","Medium"]),
+                    "description": "Random outbound traffic.",
                     "src_ip": victim_ip,
-                    "dest_ip": "203.0.113.88",
+                    "dest_ip": random.choice(["203.0.113.88","198.51.100.42","192.0.2.77"]),
                     "dest_port": random.randint(49152, 65535), # Random Port
-                    "bytes_out": random.randint(100, 5000)     # Random Size
+                    "bytes_out": random.randint(100, 8000)     # Random Size
                 }, offset_seconds=t, group_id=group_id, test_case="Apophenia_Trap"))
 
         elif variant == "truth":
             # TRUTH: Fixed interval (60s), fixed port. SIGNAL.
-            for i in range(5):
+            for i in range(8):
                 alerts.append(self._base_alert_builder({
                     "alert_name": "Outbound Connection",
                     "severity": "Medium",
@@ -106,15 +106,16 @@ class MimirAlertGenerator:
         
         if variant == "trap":
             # TRAP: Missing Parent Process.
-            alerts.append(self._base_alert_builder({
-                "alert_name": "Suspicious PowerShell",
-                "severity": "High",
-                "description": "Encoded PowerShell detected.",
-                "user": "SYSTEM",
-                "file_name": "powershell.exe",
-                "command_line": cmd,
-                "parent_process": None, # <--- MISSING EVIDENCE
-            }, offset_seconds=5, group_id=group_id, test_case="Abductive_Trap"))
+            for i in range(3):
+                alerts.append(self._base_alert_builder({
+                    "alert_name": "Suspicious PowerShell",
+                    "severity": "High",
+                    "description": "Encoded PowerShell detected.",
+                    "user": "SYSTEM",
+                    "file_name": "powershell.exe",
+                    "command_line": cmd,
+                    "parent_process": None, # <--- MISSING EVIDENCE
+                }, offset_seconds=5 + i*30, group_id=group_id, test_case="Abductive_Trap"))
             
         return alerts
 
