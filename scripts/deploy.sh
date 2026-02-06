@@ -27,39 +27,18 @@ cd "${TERRAFORM_DIR}"
 terraform init
 terraform apply -auto-approve -var="project_id=${PROJECT_ID}"
 
-# 2. FRONTEND BUILD (only if frontend changed)
-echo ">>> [2/6] Building frontend (Vite/PrimeReact) if changed..."
+# 2. BUILD (Docker) - always build to include fresh frontend (built inside Docker)
+echo ">>> [2/5] Building Container Image..."
 cd "${ROOT_DIR}"
-if git diff --quiet HEAD -- client ; then
-  echo "No frontend changes detected; skipping npm build."
-else
-  cd client
-  npm install
-  npm run build
-  cd "${ROOT_DIR}"
-fi
+docker build --platform=linux/amd64 -t "${IMAGE_URI}" .
 
-# 3. BUILD (Docker) - skip if no relevant changes
-echo ">>> [3/6] Building Container Image..."
-if git diff --quiet HEAD -- Dockerfile src requirements.txt client ; then
-  echo "No Docker-relevant changes detected; skipping build/push."
-  SKIP_PUSH=true
-else
-  docker build --platform=linux/amd64 -t "${IMAGE_URI}" .
-  SKIP_PUSH=false
-fi
+# 3. PUSH (Artifact Registry)
+echo ">>> [3/5] Pushing to Artifact Registry..."
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+docker push "${IMAGE_URI}"
 
-# 4. PUSH (Artifact Registry)
-if [ "${SKIP_PUSH}" = false ]; then
-  echo ">>> [4/6] Pushing to Artifact Registry..."
-  gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-  docker push "${IMAGE_URI}"
-else
-  echo ">>> [4/6] Skipping push (image unchanged)."
-fi
-
-# 5. DEPLOY (Cloud Run)
-echo ">>> [5/6] Deploying Service to Cloud Run..."
+# 4. DEPLOY (Cloud Run)
+echo ">>> [4/5] Deploying Service to Cloud Run..."
 gcloud run deploy "${APP_NAME}" \
   --image "${IMAGE_URI}" \
   --region "${REGION}" \
@@ -67,8 +46,8 @@ gcloud run deploy "${APP_NAME}" \
   --set-env-vars "BQ_TABLE_ID=${PROJECT_ID}.mimir_security_lake.investigations_results" \
   --allow-unauthenticated
 
-# 6. WIRING (Pub/Sub -> Cloud Run)
-echo ">>> [6/6] Wiring Pub/Sub Subscription..."
+# 5. WIRING (Pub/Sub -> Cloud Run)
+echo ">>> [5/5] Wiring Pub/Sub Subscription..."
 # Get the URL of the just-deployed service
 SERVICE_URL=$(gcloud run services describe "${APP_NAME}" --region "${REGION}" --format 'value(status.url)')
 
