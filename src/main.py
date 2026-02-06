@@ -4,7 +4,7 @@ import os
 import logging
 import vertexai
 from pathlib import Path
-from flask import Flask, request
+from flask import Flask, request, jsonify, send_from_directory
 from google.cloud import bigquery
 from vertexai.generative_models import GenerativeModel, SafetySetting
 
@@ -97,6 +97,54 @@ def index():
     
     bq_client.insert_rows_json(TABLE_ID, rows)
     return "Analyzed", 200
+
+@app.route("/api/results", methods=["GET"])
+def api_results():
+    """Return latest analysis rows for the UI table."""
+    query = f"""
+    SELECT
+      timestamp,
+      JSON_VALUE(bias_analysis, '$.final_verdict') AS verdict,
+      JSON_VALUE(bias_analysis, '$.verdict_confidence') AS verdict_confidence,
+      JSON_VALUE(bias_analysis, '$.\"Notes for Analyst\"') AS notes,
+      JSON_VALUE(bias_analysis, '$.apophenia_risk') AS apophenia,
+      JSON_VALUE(bias_analysis, '$.anchoring_analysis') AS anchoring,
+      JSON_VALUE(bias_analysis, '$.abductive_notes') AS abduction,
+      raw_log_summary AS raw_logs,
+      alert_group_id
+    FROM `{TABLE_ID}`
+    ORDER BY timestamp DESC
+    LIMIT 5
+    """
+    rows = bq_client.query(query).result()
+    payload = []
+    for row in rows:
+        payload.append({
+            "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+            "verdict": row.verdict,
+            "verdict_confidence": row.verdict_confidence,
+            "notes": row.notes,
+            "apophenia": row.apophenia,
+            "anchoring": row.anchoring,
+            "abduction": row.abduction,
+            "raw_logs": row.raw_logs,
+            "alert_group_id": row.alert_group_id,
+        })
+    return jsonify(payload)
+
+@app.route("/ui", methods=["GET"])
+def ui():
+    """Serve built frontend (Vite build output)."""
+    frontend_dir = Path(__file__).parent.parent / "frontend"
+    index_path = frontend_dir / "index.html"
+    if not index_path.exists():
+        return "UI not built", 404
+    return send_from_directory(frontend_dir, "index.html")
+
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    frontend_dir = Path(__file__).parent.parent / "frontend" / "assets"
+    return send_from_directory(frontend_dir, filename)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
