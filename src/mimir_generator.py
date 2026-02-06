@@ -14,10 +14,13 @@ class MimirAlertGenerator:
         self.project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
         self.topic_id = topic_id
 
-    def _base_alert_builder(self, template: Dict[str, Any], offset_seconds: int = 0, **kwargs) -> Dict[str, Any]:
+    def _base_alert_builder(self, template: Dict[str, Any], offset_seconds: int = 0, group_id: str = None, **kwargs) -> Dict[str, Any]:
         """Creates a standardized SIEM alert object."""
         alert = template.copy()
         alert["log_id"] = str(uuid.uuid4())
+        alert["alert_id"] = str(uuid.uuid4())
+        if group_id:
+            alert["alert_group_id"] = group_id
         event_time = self.base_time + timedelta(seconds=offset_seconds)
         alert["timestamp"] = event_time.isoformat()
         
@@ -31,6 +34,7 @@ class MimirAlertGenerator:
     # --- 1. ANCHORING (Alert Fatigue) ---
     def generate_anchoring(self, variant: str = "trap") -> List[Dict]:
         alerts = []
+        group_id = str(uuid.uuid4())
         user = "svc_backup"
         src_ip = "10.50.1.100"
 
@@ -43,7 +47,7 @@ class MimirAlertGenerator:
                 "src_ip": src_ip,
                 "user": user,
                 "action": "Block"
-            }, offset_seconds=i*5, test_case="Anchoring_Noise"))
+            }, offset_seconds=i*5, group_id=group_id, test_case="Anchoring_Noise"))
 
         # SIGNAL: The high severity event hidden at the end
         if variant == "trap":
@@ -54,13 +58,14 @@ class MimirAlertGenerator:
                 "src_ip": src_ip,
                 "user": user,
                 "action": "Allow"
-            }, offset_seconds=45, test_case="Anchoring_Signal"))
+            }, offset_seconds=45, group_id=group_id, test_case="Anchoring_Signal"))
             
         return alerts
 
     # --- 2. APOPHENIA (False Patterns) ---
     def generate_apophenia(self, variant: str = "trap") -> List[Dict]:
         alerts = []
+        group_id = str(uuid.uuid4())
         victim_ip = "192.168.1.55"
         
         if variant == "trap":
@@ -76,7 +81,7 @@ class MimirAlertGenerator:
                     "dest_ip": "203.0.113.88",
                     "dest_port": random.randint(49152, 65535), # Random Port
                     "bytes_out": random.randint(100, 5000)     # Random Size
-                }, offset_seconds=t, test_case="Apophenia_Trap"))
+                }, offset_seconds=t, group_id=group_id, test_case="Apophenia_Trap"))
 
         elif variant == "truth":
             # TRUTH: Fixed interval (60s), fixed port. SIGNAL.
@@ -89,13 +94,14 @@ class MimirAlertGenerator:
                     "dest_ip": "203.0.113.88",
                     "dest_port": 8080, # Fixed Port
                     "bytes_out": 256   # Fixed Size
-                }, offset_seconds=i*60, test_case="Apophenia_Truth"))
+                }, offset_seconds=i*60, group_id=group_id, test_case="Apophenia_Truth"))
                 
         return alerts
 
     # --- 3. ABDUCTIVE (Missing Evidence) ---
     def generate_abductive(self, variant: str = "trap") -> List[Dict]:
         alerts = []
+        group_id = str(uuid.uuid4())
         cmd = "powershell.exe -nop -w hidden -enc JABzAD0A..."
         
         if variant == "trap":
@@ -108,12 +114,12 @@ class MimirAlertGenerator:
                 "file_name": "powershell.exe",
                 "command_line": cmd,
                 "parent_process": None, # <--- MISSING EVIDENCE
-            }, offset_seconds=5, test_case="Abductive_Trap"))
+            }, offset_seconds=5, group_id=group_id, test_case="Abductive_Trap"))
             
         return alerts
 
     def publish(self, data: List[Dict]):
-        """Publishes alerts to Pub/Sub (one message per alert)."""
+        """Publishes the entire batch as one Pub/Sub message (batch analysis)."""
         if not self.project_id:
             print("ERROR: GOOGLE_CLOUD_PROJECT env var not set.")
             return
@@ -121,17 +127,13 @@ class MimirAlertGenerator:
         publisher = pubsub_v1.PublisherClient()
         topic_path = publisher.topic_path(self.project_id, self.topic_id)
 
-        sent = 0
-        for alert in data:
-            message_bytes = json.dumps(alert).encode("utf-8")
-            try:
-                future = publisher.publish(topic_path, message_bytes)
-                future.result()
-                sent += 1
-            except Exception as e:
-                print(f"Failed to publish alert {alert.get('alert_id')}: {e}")
-
-        print(f"Sent {sent}/{len(data)} alerts to {self.topic_id}")
+        message_bytes = json.dumps(data).encode("utf-8")
+        try:
+            future = publisher.publish(topic_path, message_bytes)
+            future.result()
+            print(f"Sent 1 batch ({len(data)} alerts) to {self.topic_id}")
+        except Exception as e:
+            print(f"Failed to publish batch: {e}")
 
 if __name__ == "__main__":
     # ARGUMENT PARSER (The CLI Interface)

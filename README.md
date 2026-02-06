@@ -47,7 +47,7 @@
 
 Rather than monitoring the analyst, Mimir analyzes the *alert data itself* before it reaches the human. It identifies data structures that are likely to trigger cognitive biases and determines which reasoning model (Deductive, Abductive, or Inductive) is required to solve the investigation.
 
-In a modern SOC, the structure of alert data often leads to three primary cognitive traps:
+In a modern SOC, the structure of alert data often leads to some cognitive traps such as:
 1.  **Anchoring Risk:** High volumes of "noise" (e.g., repeated low-severity logs) that predispose analysts to miss a critical "signal" hidden at the end.
 2.  **Apophenia Risk:** Random data clusters that mimic patterns (e.g., random high-port connections), tempting analysts to find false correlations.
 3.  **Abductive Reasoning Gaps:** Alerts with missing evidence (like a null Parent Process) that require the analyst to *infer* the cause rather than *deduce* it.
@@ -104,8 +104,17 @@ Use the helper script to generate synthetic alerts and send them to the pipeline
 # Test Anchoring Bias (High noise, hidden signal)
 ./scripts/run_test.sh anchoring trap
 
+./scripts/run_test.sh anchoring truth
+
 # Test Apophenia (Random noise looking like a pattern)
 ./scripts/run_test.sh apophenia trap
+
+./scripts/run_test.sh apophenia truth
+
+# Test Abduction (missing data creating need to rely on abductive reasoning)
+./scripts/run_test.sh abduction trap
+
+./scripts/run_test.sh abduction truth
 ```
 
 ### 2. View Results in BigQuery
@@ -115,8 +124,14 @@ Go to the GCP Console -> BigQuery and run:
 SELECT 
   timestamp,
   JSON_VALUE(bias_analysis, '$.final_verdict') as verdict,
+  JSON_VALUE(bias_analysis, '$.verdict_confidence') as verdict_confidence,
   JSON_VALUE(bias_analysis, '$.Notes for Analyst') as notes,
+  JSON_VALUE(bias_analysis, '$.apophenia_risk') as apophenia,
+  JSON_VALUE(bias_analysis, '$.anchoring_analysis') as anchoring,
+  JSON_VALUE(bias_analysis, '$.abductive_notes') as abduction,
   bias_analysis
+  raw_log_summary as raw_logs,
+  alert_group_id,
 FROM `mimir_security_lake.investigations_results`
 ORDER BY timestamp DESC
 LIMIT 5

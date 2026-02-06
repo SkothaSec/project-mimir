@@ -10,6 +10,18 @@
     "mode": "REQUIRED"
   },
   {
+    "name": "alert_group_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Grouping key shared by all alerts produced in the same generation batch"
+  },
+  {
+    "name": "test_case",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Scenario label used by the generator for this batch/event"
+  },
+  {
     "name": "raw_log_summary",
     "type": "STRING",
     "mode": "NULLABLE"
