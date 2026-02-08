@@ -24,7 +24,7 @@ export default function App() {
     <div className="wrap">
       <header>
         <div>
-          <h1>Mimir Investigator</h1>
+          <h1>Project Mimir</h1>
           <p className="subtitle">Latest Vertex assessments (last 5)</p>
         </div>
       </header>
