@@ -33,3 +33,9 @@ You must return **STRICT JSON** with no markdown formatting (no backticks).
   "verdict_confidence": 1-100,
   "Notes for Analyst": "string"
 }
+
+# VERDICT CALIBRATION (pick one)
+- **MALICIOUS**: clear intent or strongly consistent malicious pattern with sufficient evidence.
+- **BENIGN**: activity is normal/noise or clearly non-malicious.
+- **SUSPICIOUS**: uncertainty remains because evidence is incomplete or ambiguous.
+If you lack evidence, prefer **SUSPICIOUS** only when it truly cannot be resolved; otherwise choose **BENIGN** when data looks normal. Align confidence to evidence strength (e.g., low evidence ⇒ confidence <50).

@@ -27,25 +27,15 @@ cd "${TERRAFORM_DIR}"
 terraform init
 terraform apply -auto-approve -var="project_id=${PROJECT_ID}"
 
-# 2. BUILD (Docker) - skip if no relevant changes
+# 2. BUILD (Docker) - always build to include fresh frontend (built inside Docker)
 echo ">>> [2/5] Building Container Image..."
 cd "${ROOT_DIR}"
-if git diff --quiet HEAD -- Dockerfile src requirements.txt client ; then
-  echo "No Docker-relevant changes detected; skipping build/push."
-  SKIP_PUSH=true
-else
-  docker build --platform=linux/amd64 -t "${IMAGE_URI}" .
-  SKIP_PUSH=false
-fi
+docker build --platform=linux/amd64 -t "${IMAGE_URI}" .
 
 # 3. PUSH (Artifact Registry)
-if [ "${SKIP_PUSH}" = false ]; then
-  echo ">>> [3/5] Pushing to Artifact Registry..."
-  gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-  docker push "${IMAGE_URI}"
-else
-  echo ">>> [3/5] Skipping push (image unchanged)."
-fi
+echo ">>> [3/5] Pushing to Artifact Registry..."
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+docker push "${IMAGE_URI}"
 
 # 4. DEPLOY (Cloud Run)
 echo ">>> [4/5] Deploying Service to Cloud Run..."

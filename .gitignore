@@ -15,3 +15,6 @@ venv/
 .vscode/
 .idea/
 terraform.tfplan
+client/node_modules/
+client/dist/
+client/package-lock.json

@@ -48,11 +48,22 @@
 Rather than monitoring the analyst, Mimir analyzes the *alert data itself* before it reaches the human. It identifies data structures that are likely to trigger cognitive biases and determines which reasoning model (Deductive, Abductive, or Inductive) is required to solve the investigation.
 
 In a modern SOC, the structure of alert data often leads to some cognitive traps such as:
-1.  **Anchoring Risk:** High volumes of "noise" (e.g., repeated low-severity logs) that predispose analysts to miss a critical "signal" hidden at the end.
-2.  **Apophenia Risk:** Random data clusters that mimic patterns (e.g., random high-port connections), tempting analysts to find false correlations.
-3.  **Abductive Reasoning Gaps:** Alerts with missing evidence (like a null Parent Process) that require the analyst to *infer* the cause rather than *deduce* it.
+1.  **Anchoring Risk:** High volumes of noise that predispose analysts to miss a critical signal hidden at the end.
+2.  **Apophenia Risk:** Random data clusters that appear to have pattern but are genuinely patternless, tempting analysts to find false correlations.
+3.  **Abductive Reasoning Gaps:** Alerts with missing evidence that will require the analyst to *infer* the cause rather than *deduce* it.
 
 Mimir uses **Google Vertex AI (Gemini Pro)** to analyze incoming alerts for these risks and appending a "Cognitive Verdict" to the investigation record to guide the analyst's approach.
+
+### Project Screenshots
+<p align="center">
+<img src="./images/screenshots/landingScreenshot.png"
+  alt="Landing for Front End">
+</p>
+
+<p align="center">
+<img src="./images/screenshots/detailsScreenshot.png"
+  alt="Alert Details with data from vertex">
+</p>
 
 ### Built With
 
