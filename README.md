@@ -54,6 +54,17 @@ In a modern SOC, the structure of alert data often leads to some cognitive traps
 
 Mimir uses **Google Vertex AI (Gemini Pro)** to analyze incoming alerts for these risks and appending a "Cognitive Verdict" to the investigation record to guide the analyst's approach.
 
+### Project Screenshots
+<p align="center">
+<img src="./images/screenshots/landingScreenshot.png"
+  alt="Landing for Front End">
+</p>
+
+<p align="center">
+<img src="./images/screenshots/detailsScreenshot.png"
+  alt="Alert Details with data from vertex">
+</p>
+
 ### Built With
 
 * ![Google Cloud](https://img.shields.io/badge/GoogleCloud-%234285F4.svg?style=for-the-badge&logo=google-cloud&logoColor=white)
